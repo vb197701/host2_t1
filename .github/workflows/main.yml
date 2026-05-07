@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 拉取私库
+      - name: 拉取仓库
         uses: actions/checkout@v4
 
       - name: 拉取私库代码
