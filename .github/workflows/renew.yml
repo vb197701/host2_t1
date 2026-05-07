@@ -5,6 +5,10 @@ on:
     - cron: '8 * * * *'
   workflow_dispatch:
 
+# ✅ 强制使用 Node.js 24，消除警告
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   actions: write
   contents: write
@@ -97,7 +101,7 @@ jobs:
 
       - name: 清理历史运行记录
         if: always()
-        uses: Mattraks/delete-workflow-runs@v2
+        uses: Mattraks/delete-workflow-runs@v3
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
