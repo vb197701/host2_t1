@@ -2,7 +2,7 @@ name: Auto Renew
 
 on:
   schedule:
-    - cron: '0,30 * * * *'
+    - cron: '0,40 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -19,13 +19,13 @@ jobs:
       # ----------------------------------------------------------------
       # 1. 拉取 B 库自身（用于 KeepAlive 提交）
       # ----------------------------------------------------------------
-      - name: 拉取 B 库
+      - name: 拉取 REPO
         uses: actions/checkout@v4
 
       # ----------------------------------------------------------------
       # 2. 拉取 A 库私有代码（含 main.py 和个人信息）
       # ----------------------------------------------------------------
-      - name: 拉取 A 库私有代码
+      - name: 拉取私库代码
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.PRIVATE_REPO_NAME }}
