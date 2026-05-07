@@ -2,34 +2,47 @@ name: Auto Renew
 
 on:
   schedule:
-    - cron: '0,30 * * * *' 
+    - cron: '0,30 * * * *'
   workflow_dispatch:
 
 permissions:
   actions: write
-  contents: write 
+  contents: write
 
 jobs:
   run-renew:
     name: 执行脚本
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      - name: 拉取仓库
+      # ----------------------------------------------------------------
+      # 1. 拉取 B 库自身（用于 KeepAlive 提交）
+      # ----------------------------------------------------------------
+      - name: 拉取 B 库
         uses: actions/checkout@v4
 
-      - name: 拉取私库代码
+      # ----------------------------------------------------------------
+      # 2. 拉取 A 库私有代码（含 main.py 和个人信息）
+      # ----------------------------------------------------------------
+      - name: 拉取 A 库私有代码
         uses: actions/checkout@v4
         with:
-          repository: ${{ secrets.PRIVATE_REPO_NAME }}  
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}  
-          path: private_script  
+          repository: ${{ secrets.PRIVATE_REPO_NAME }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: private_script
 
+      # ----------------------------------------------------------------
+      # 3. 配置 Python 环境
+      # ----------------------------------------------------------------
       - name: 配置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
+      # ----------------------------------------------------------------
+      # 4. 安装系统依赖（含 Chrome）
+      # ----------------------------------------------------------------
       - name: 安装系统依赖
         run: |
           sudo apt-get update
@@ -38,43 +51,53 @@ jobs:
             https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i /tmp/google-chrome-stable_current_amd64.deb || sudo apt-get install -f -y
 
+      # ----------------------------------------------------------------
+      # 5. 安装 Python 依赖
+      # ----------------------------------------------------------------
       - name: 安装 Python 依赖
         run: |
           python -m pip install --upgrade pip
           pip install DrissionPage xvfbwrapper requests SpeechRecognition pydub
 
-      - name: 启用 WARP 网络
-        uses: fscarmen/warp-on-actions@v1.3
-        with:
-          stack: dual
-          mode: client
-
-      - name: 修复 DNS
+      # ----------------------------------------------------------------
+      # 6. ✅ 安装官方 WARP 客户端（纯 SOCKS5 代理模式，端口 40000）
+      #    替代原来的 fscarmen/warp-on-actions，确保 Chrome 代理流量
+      #    100% 走 WARP，reCAPTCHA 不再被识别为数据中心 IP
+      # ----------------------------------------------------------------
+      - name: 安装并启动 WARP（官方 SOCKS5 模式）
         run: |
-          echo "[INFO] 停用 systemd-resolved，设置公共 DNS..."
-          sudo systemctl stop systemd-resolved 2>/dev/null || true
-          sudo systemctl disable systemd-resolved 2>/dev/null || true
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | \
+            sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] \
+            https://pkg.cloudflareclient.com/ jammy main" | \
+            sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update && sudo apt-get install -y cloudflare-warp
 
-          sudo rm -f /etc/resolv.conf
-          printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\nnameserver 1.0.0.1\n" | sudo tee /etc/resolv.conf
+          warp-cli --accept-tos registration new
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos connect
 
-          sleep 2
+          echo "⏳ 等待 WARP 隧道建立 (10秒)..."
+          sleep 10
 
-          echo "[INFO] DNS 测试:"
-          nslookup host2play.gratis 1.1.1.1 || echo "[WARN] 解析失败"
-
-          echo ""
-          echo "[INFO] 当前出口 IP:"
-          curl -s --max-time 10 https://api.ipify.org && echo
+          echo "[INFO] WARP SOCKS5 代理 IP 验证:"
+          curl -s -x socks5://127.0.0.1:40000 https://api.ipify.org && echo
           echo "[INFO] WARP Trace:"
-          curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -E 'ip=|warp=|loc=' || true
+          curl -s -x socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | \
+            grep -E 'ip=|warp=|loc=' || true
 
+      # ----------------------------------------------------------------
+      # 7. 执行续订（Chrome 已在 main.py 中配置走 SOCKS5:40000）
+      # ----------------------------------------------------------------
       - name: 执行续订
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: python private_script/main.py
 
+      # ----------------------------------------------------------------
+      # 8. 上传截图
+      # ----------------------------------------------------------------
       - name: 上传截图
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,6 +107,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      # ----------------------------------------------------------------
+      # 9. KeepAlive：防止 GitHub 禁用定时任务
+      # ----------------------------------------------------------------
       - name: KeepAlive
         if: always()
         run: |
@@ -98,6 +124,9 @@ jobs:
             git push "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:main --force
           fi
 
+      # ----------------------------------------------------------------
+      # 10. 清理历史运行记录
+      # ----------------------------------------------------------------
       - name: 清理历史运行记录
         if: always()
         uses: Mattraks/delete-workflow-runs@v2
