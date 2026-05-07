@@ -2,7 +2,10 @@ name: Auto Renew
 
 on:
   schedule:
-    - cron: '0,30 * * * *'
+    - cron: '0 0 * * *'          # 00:00（补跨天缺口）
+    - cron: '40 0 * * *'         # 00:40
+    - cron: '0,40 2-22/2 * * *'  # 偶数小时 :00 和 :40
+    - cron: '20 1-23/2 * * *'    # 奇数小时 :20
   workflow_dispatch:
 
 permissions:
