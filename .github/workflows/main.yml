@@ -2,7 +2,7 @@ name: Auto Renew
 
 on:
   schedule:
-    - cron: '0,40 * * * *'
+    - cron: '0,30 * * * *'
   workflow_dispatch:
 
 permissions:
